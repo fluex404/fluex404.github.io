@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>👾 Tangkap Alien Nakal!</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Fredoka', sans-serif;
+            background-color: #2e1065; /* Warna luar angkasa gelap */
+            background-image: radial-gradient(#4c1d95 2px, transparent 2px);
+            background-size: 30px 30px;
+            user-select: none;
+            touch-action: manipulation; /* Biar tap di HP lebih responsif */
+        }
+
+        /* Lubang tempat alien sembunyi */
+        .hole {
+            position: relative;
+            overflow: hidden;
+            background-color: #172554;
+            border: 6px solid #1e3a8a;
+            border-radius: 50%;
+            box-shadow: inset 0 10px 15px rgba(0,0,0,0.5);
+        }
+
+        /* Alien yang bisa naik turun */
+        .alien {
+            position: absolute;
+            bottom: -100%; /* Sembunyi di bawah */
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 4rem;
+            transition: bottom 0.1s ease-out; /* Animasi cepat */
+            cursor: pointer;
+        }
+
+        /* Class untuk memunculkan alien */
+        .up .alien {
+            bottom: 5%; /* Muncul! */
+            transition: bottom 0.2s ease-out;
+        }
+
+        /* Animasi saat dipukul */
+        @keyframes whack-effect {
+            0% { transform: translateX(-50%) scale(1); filter: brightness(1); }
+            50% { transform: translateX(-50%) scale(0.8) rotate(15deg); filter: brightness(2) drop-shadow(0 0 10px red); }
+            100% { transform: translateX(-50%) scale(0); opacity: 0; }
+        }
+
+        .whacked {
+            animation: whack-effect 0.2s forwards !important;
+            pointer-events: none; /* Biar gak bisa diklik 2 kali */
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+
+    <div class="bg-indigo-900 rounded-3xl shadow-[0_15px_50px_rgba(0,0,0,0.5)] p-6 md:p-8 w-full max-w-md text-center border-4 border-indigo-500 relative">
+        
+        <h1 class="text-3xl font-bold text-white mb-4 drop-shadow-md">👾 Tangkap Alien!</h1>
+
+        <div class="flex justify-between items-center mb-6 bg-indigo-800 p-3 rounded-2xl border-2 border-indigo-600">
+            <div class="text-white font-bold text-xl">
+                Waktu: <span id="time" class="text-red-400">30</span>s
+            </div>
+            <div class="text-white font-bold text-xl">
+                Skor: <span id="score" class="text-yellow-400">0</span>
+            </div>
+        </div>
+
+        <button id="start-btn" onclick="startGame()" class="mb-6 w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-full text-xl transition transform hover:scale-105 shadow-[0_5px_0_rgb(21,128,61)] active:translate-y-1 active:shadow-none">
+            Mulai Main!
+        </button>
+
+        <div class="grid grid-cols-3 gap-3 md:gap-4 w-full aspect-square" id="game-board">
+            <div class="hole"><div class="alien" onclick="whack(event)">👾</div></div>
+            <div class="hole"><div class="alien" onclick="whack(event)">👾</div></div>
+            <div class="hole"><div class="alien" onclick="whack(event)">👾</div></div>
+            <div class="hole"><div class="alien" onclick="whack(event)">👾</div></div>
+            <div class="hole"><div class="alien" onclick="whack(event)">👾</div></div>
+            <div class="hole"><div class="alien" onclick="whack(event)">👾</div></div>
+            <div class="hole"><div class="alien" onclick="whack(event)">👾</div></div>
+            <div class="hole"><div class="alien" onclick="whack(event)">👾</div></div>
+            <div class="hole"><div class="alien" onclick="whack(event)">👾</div></div>
+        </div>
+    </div>
+
+    <div id="end-screen" class="hidden fixed inset-0 bg-black bg-opacity-90 flex flex-col items-center justify-center z-50 p-4 text-center">
+        <h1 class="text-5xl md:text-6xl font-bold text-white mb-4">Waktu Habis! ⏳</h1>
+        <p class="text-2xl text-indigo-300 font-semibold mb-2">Alien yang berhasil ditangkap:</p>
+        <div class="text-8xl text-yellow-400 font-bold mb-8 animate-bounce" id="final-score">0</div>
+        <button onclick="resetGame()" class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-4 px-10 rounded-full text-2xl transition transform hover:scale-110 shadow-[0_5px_0_rgb(67,56,202)] active:translate-y-1 active:shadow-none">
+            Main Lagi Bro!
+        </button>
+    </div>
+
+    <script>
+        const holes = document.querySelectorAll('.hole');
+        const scoreBoard = document.getElementById('score');
+        const timeBoard = document.getElementById('time');
+        const startBtn = document.getElementById('start-btn');
+        const endScreen = document.getElementById('end-screen');
+        const finalScore = document.getElementById('final-score');
+        
+        let lastHole;
+        let timeUp = false;
+        let score = 0;
+        let countdown;
+        let timeLeft = 30;
+
+        // Setup Web Audio API untuk efek suara pukulan (Bonk!)
+        let audioCtx;
+        function playBonk() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            // Suara lucu bernada pendek seperti "Puk!"
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.1);
+            
+            gain.gain.setValueAtTime(1, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+            
+            osc.start(audioCtx.currentTime);
+            osc.stop(audioCtx.currentTime + 0.1);
+        }
+
+        // Cari waktu acak (biar alien munculnya gak ketebak)
+        function randomTime(min, max) {
+            return Math.round(Math.random() * (max - min) + min);
+        }
+
+        // Pilih lubang acak
+        function randomHole(holes) {
+            const idx = Math.floor(Math.random() * holes.length);
+            const hole = holes[idx];
+            // Jangan muncul di lubang yang sama 2 kali berturut-turut
+            if (hole === lastHole) {
+                return randomHole(holes);
+            }
+            lastHole = hole;
+            return hole;
+        }
+
+        // Munculkan Alien
+        function peep() {
+            // Alien muncul antara 0.4 detik sampai 1 detik
+            const time = randomTime(400, 1000); 
+            const hole = randomHole(holes);
+            
+            // Hapus class whacked kalau ada sisa
+            hole.querySelector('.alien').classList.remove('whacked');
+            hole.classList.add('up');
+            
+            setTimeout(() => {
+                hole.classList.remove('up');
+                if (!timeUp) peep();
+            }, time);
+        }
+
+        // Fungsi saat Alien dipukul
+        function whack(e) {
+            if(!e.isTrusted) return; // Mencegah kecurangan pakai script auto-clicker
+            
+            playBonk(); // Bunyi pukulan
+            score++;
+            scoreBoard.textContent = score;
+            
+            // Tambahkan animasi dipukul
+            const alien = e.target;
+            alien.classList.add('whacked');
+            
+            // Turunkan segera ke dalam lubang
+            setTimeout(() => {
+                alien.parentElement.classList.remove('up');
+            }, 100);
+        }
+
+        // Mulai Game
+        function startGame() {
+            // Init audio context
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            scoreBoard.textContent = 0;
+            timeBoard.textContent = 30;
+            timeUp = false;
+            score = 0;
+            timeLeft = 30;
+            startBtn.disabled = true;
+            startBtn.classList.add('opacity-50', 'cursor-not-allowed');
+
+            peep(); // Mulai panggil alien
+
+            // Timer mundur
+            countdown = setInterval(() => {
+                timeLeft--;
+                timeBoard.textContent = timeLeft;
+                
+                // Efek tegang kalau waktu sisa 5 detik
+                if (timeLeft <= 5) timeBoard.classList.add('animate-pulse');
+
+                if (timeLeft === 0) {
+                    clearInterval(countdown);
+                    timeUp = true;
+                    setTimeout(showEndScreen, 1000); // Tunggu alien terakhir turun
+                }
+            }, 1000);
+        }
+
+        function showEndScreen() {
+            startBtn.disabled = false;
+            startBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            timeBoard.classList.remove('animate-pulse');
+            
+            finalScore.textContent = score;
+            endScreen.classList.remove('hidden');
+            fireConfetti();
+        }
+
+        function resetGame() {
+            endScreen.classList.add('hidden');
+            score = 0;
+            scoreBoard.textContent = score;
+            timeBoard.textContent = "30";
+            // Bisa langsung mulai lagi atau biarkan user klik tombol mulai di menu utama
+        }
+
+        // Efek Confetti 
+        function fireConfetti() {
+            var duration = 2 * 1000;
+            var animationEnd = Date.now() + duration;
+            var defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 9999 };
+
+            var interval = setInterval(function() {
+                var timeLeft = animationEnd - Date.now();
+                if (timeLeft <= 0) return clearInterval(interval);
+                var particleCount = 50 * (timeLeft / duration);
+                confetti(Object.assign({}, defaults, { particleCount, origin: { x: Math.random(), y: Math.random() - 0.2 } }));
+            }, 250);
+        }
+    </script>
+</body>
+</html>
