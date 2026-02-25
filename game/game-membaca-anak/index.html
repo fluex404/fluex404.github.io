@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Petualangan Membaca Anak</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Fredoka', sans-serif;
+            background-color: #f0f9ff;
+            background-image: radial-gradient(#bae6fd 2px, transparent 2px);
+            background-size: 30px 30px;
+            user-select: none; /* Mencegah text ter-block saat anak spam klik */
+        }
+
+        @keyframes bounce-in {
+            0% { transform: scale(0.5); opacity: 0; }
+            60% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(1); }
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-10px); }
+            40%, 80% { transform: translateX(10px); }
+        }
+
+        .animate-bounce-in {
+            animation: bounce-in 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+
+        .animate-shake {
+            animation: shake 0.4s ease-in-out;
+            background-color: #fca5a5 !important;
+            color: white !important;
+            border-color: #ef4444 !important;
+        }
+
+        .btn-option {
+            transition: all 0.2s ease;
+        }
+        .btn-option:hover {
+            transform: translateY(-5px) scale(1.05);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+        .btn-option:active {
+            transform: translateY(2px) scale(0.95);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+
+    <div id="start-screen" class="fixed inset-0 bg-white z-50 flex flex-col items-center justify-center p-4 text-center">
+        <h1 class="text-4xl md:text-5xl font-bold text-sky-500 mb-6">Petualangan Membaca</h1>
+        <div class="text-9xl mb-8 animate-bounce">🚀</div>
+        <p class="text-xl text-gray-500 mb-8">Nyalakan volume suara HP/Laptop-mu ya!</p>
+        <button onclick="startGame()" class="bg-sky-500 hover:bg-sky-600 text-white font-bold py-4 px-10 rounded-full text-2xl transition transform hover:scale-110 shadow-[0_5px_0_rgb(2,132,199)] active:translate-y-1 active:shadow-none">
+            Mulai Main!
+        </button>
+    </div>
+
+    <div class="bg-white rounded-3xl shadow-2xl p-6 md:p-10 w-full max-w-lg text-center border-4 border-sky-400 relative overflow-hidden hidden" id="game-container">
+        
+        <div class="flex justify-between items-center mb-6">
+            <div class="bg-yellow-400 text-yellow-900 px-4 py-2 rounded-full font-bold shadow-sm">
+                🌟 Skor: <span id="score">0</span>
+            </div>
+            <div class="bg-sky-400 text-white px-4 py-2 rounded-full font-bold shadow-sm">
+                Level: <span id="level">1</span>/5
+            </div>
+        </div>
+
+        <div class="mb-8 min-h-[150px] flex items-center justify-center">
+            <div id="image-container" class="text-9xl animate-bounce-in drop-shadow-xl cursor-default">
+                🍎
+            </div>
+        </div>
+
+        <h2 class="text-2xl md:text-3xl font-bold text-gray-700 mb-6">Pilih kata yang benar!</h2>
+
+        <div id="options-container" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            </div>
+
+        <div id="message" class="text-xl font-bold mt-4 h-8 text-green-500 opacity-0 transition-opacity duration-300">
+            Hebat!
+        </div>
+    </div>
+
+    <div id="end-screen" class="hidden fixed inset-0 bg-sky-900 bg-opacity-90 flex flex-col items-center justify-center z-50 p-4 text-center">
+        <h1 class="text-5xl md:text-6xl font-bold text-white mb-4 animate-bounce-in">Horeee! 🎉</h1>
+        <p class="text-2xl text-yellow-300 font-semibold mb-8">Kamu sudah pintar membaca!</p>
+        <div class="text-9xl mb-8">🏆</div>
+        <button onclick="restartGame()" class="bg-green-500 hover:bg-green-600 text-white font-bold py-4 px-8 rounded-full text-2xl transition transform hover:scale-110 shadow-[0_5px_0_rgb(21,128,61)] active:translate-y-1 active:shadow-none">
+            Main Lagi Yuk!
+        </button>
+    </div>
+
+    <script>
+        // Setup Web Audio API
+        let audioCtx;
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        // Fungsi membuat suara
+        function playSound(type) {
+            if (!audioCtx) return;
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            if (type === 'correct') {
+                // Suara "Ting!"
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(523.25, audioCtx.currentTime); // Nada C5
+                oscillator.frequency.exponentialRampToValueAtTime(1046.50, audioCtx.currentTime + 0.1); // Naik ke C6
+                gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+                oscillator.start(audioCtx.currentTime);
+                oscillator.stop(audioCtx.currentTime + 0.5);
+            } else if (type === 'wrong') {
+                // Suara "Tet!"
+                oscillator.type = 'sawtooth';
+                oscillator.frequency.setValueAtTime(150, audioCtx.currentTime);
+                oscillator.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.3); // Nada turun
+                gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+                oscillator.start(audioCtx.currentTime);
+                oscillator.stop(audioCtx.currentTime + 0.3);
+            }
+        }
+
+        // Fungsi Text-to-Speech (Membaca Kata)
+        function speakWord(word) {
+            if ('speechSynthesis' in window) {
+                // Hentikan suara sebelumnya jika masih jalan
+                window.speechSynthesis.cancel(); 
+                
+                const utterance = new SpeechSynthesisUtterance(word);
+                utterance.lang = 'id-ID'; // Logat Indonesia
+                utterance.rate = 0.8; // Diperlambat sedikit agar jelas untuk anak
+                utterance.pitch = 1.2; // Sedikit dinaikkan nadanya agar lebih ramah anak
+                window.speechSynthesis.speak(utterance);
+            }
+        }
+
+        const gameData = [
+            { icon: "🍎", word: "A-PEL", speak: "APEL", options: ["A-PEL", "A-YAM", "A-WAN", "ANG-SA"] },
+            { icon: "🐱", word: "KU-CING", speak: "KUCING", options: ["KU-DUNG", "KU-CING", "KAN-CIL", "KAM-BING"] },
+            { icon: "🚗", word: "MO-BIL", speak: "MOBIL", options: ["MO-TOR", "ME-LON", "MO-BIL", "MA-DU"] },
+            { icon: "🦋", word: "KU-PU", speak: "KUPU KUPU", options: ["KU-KU", "KU-TU", "KU-PU", "KU-DA"] },
+            { icon: "🍌", word: "PI-SANG", speak: "PISANG", options: ["PI-NANG", "PI-RING", "PI-SANG", "PIN-TU"] }
+        ];
+
+        let currentLevel = 0;
+        let score = 0;
+
+        const startScreen = document.getElementById('start-screen');
+        const gameContainer = document.getElementById('game-container');
+        const imageContainer = document.getElementById('image-container');
+        const optionsContainer = document.getElementById('options-container');
+        const scoreDisplay = document.getElementById('score');
+        const levelDisplay = document.getElementById('level');
+        const messageDisplay = document.getElementById('message');
+        const endScreen = document.getElementById('end-screen');
+
+        function startGame() {
+            initAudio(); // Wajib diinisialisasi lewat klik pertama user
+            startScreen.classList.add('hidden');
+            gameContainer.classList.remove('hidden');
+            speakWord("Ayo mulai bermain!");
+            loadLevel();
+        }
+
+        function shuffle(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        function loadLevel() {
+            if (currentLevel >= gameData.length) {
+                showEndScreen();
+                return;
+            }
+
+            const currentData = gameData[currentLevel];
+            
+            imageContainer.classList.remove('animate-bounce-in');
+            void imageContainer.offsetWidth; 
+            imageContainer.classList.add('animate-bounce-in');
+            
+            imageContainer.innerText = currentData.icon;
+            levelDisplay.innerText = currentLevel + 1;
+            
+            optionsContainer.innerHTML = '';
+            const shuffledOptions = shuffle([...currentData.options]);
+
+            shuffledOptions.forEach(option => {
+                const btn = document.createElement('button');
+                btn.innerText = option;
+                btn.className = "btn-option bg-white border-4 border-sky-300 text-sky-700 font-bold text-2xl py-4 rounded-2xl shadow-[0_5px_0_rgb(125,211,252)] hover:bg-sky-50";
+                
+                btn.onclick = () => {
+                    // Hilangkan tanda strip saat diucapkan biar natural bacanya
+                    let wordToSpeak = option.replace("-", ""); 
+                    speakWord(wordToSpeak); 
+                    checkAnswer(option, currentData.word, btn);
+                };
+                optionsContainer.appendChild(btn);
+            });
+
+            messageDisplay.style.opacity = '0';
+        }
+
+        function checkAnswer(selectedWord, correctWord, buttonElement) {
+            const allButtons = document.querySelectorAll('.btn-option');
+            allButtons.forEach(btn => btn.disabled = true);
+
+            if (selectedWord === correctWord) {
+                playSound('correct'); // Bunyi Ting!
+                score += 20;
+                scoreDisplay.innerText = score;
+                
+                buttonElement.classList.replace('border-sky-300', 'border-green-500');
+                buttonElement.classList.replace('text-sky-700', 'text-green-600');
+                buttonElement.classList.replace('shadow-[0_5px_0_rgb(125,211,252)]', 'shadow-[0_5px_0_rgb(34,197,94)]');
+                
+                messageDisplay.innerText = "Hebat! Betul sekali! 🎉";
+                messageDisplay.className = "text-xl font-bold mt-4 h-8 text-green-500 opacity-100 transition-opacity duration-300";
+                
+                fireConfetti();
+
+                setTimeout(() => {
+                    currentLevel++;
+                    loadLevel();
+                }, 2000); // Jeda sedikit lebih lama agar suara selesai bicara
+
+            } else {
+                playSound('wrong'); // Bunyi Tet!
+                buttonElement.classList.add('animate-shake');
+                
+                messageDisplay.innerText = "Ups! Coba lagi ya! 💪";
+                messageDisplay.className = "text-xl font-bold mt-4 h-8 text-red-500 opacity-100 transition-opacity duration-300";
+
+                setTimeout(() => {
+                    buttonElement.classList.remove('animate-shake');
+                    allButtons.forEach(btn => btn.disabled = false); 
+                }, 800);
+            }
+        }
+
+        function fireConfetti() {
+            var duration = 1.5 * 1000;
+            var animationEnd = Date.now() + duration;
+            var defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 0 };
+
+            function randomInRange(min, max) {
+                return Math.random() * (max - min) + min;
+            }
+
+            var interval = setInterval(function() {
+                var timeLeft = animationEnd - Date.now();
+                if (timeLeft <= 0) return clearInterval(interval);
+
+                var particleCount = 50 * (timeLeft / duration);
+                confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } }));
+                confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } }));
+            }, 250);
+        }
+
+        function showEndScreen() {
+            speakWord("Hore! Kamu pintar sekali!");
+            endScreen.classList.remove('hidden');
+            fireConfetti();
+        }
+
+        function restartGame() {
+            currentLevel = 0;
+            score = 0;
+            scoreDisplay.innerText = score;
+            endScreen.classList.add('hidden');
+            speakWord("Ayo main lagi!");
+            loadLevel();
+        }
+    </script>
+</body>
+</html>
